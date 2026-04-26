@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PitchPerfect - 终极专业版</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+</head>
+<body>
+    <div class="app-container logic-theme">
+        <!-- 目标音符显示 -->
+        <div class="target-display">
+            <h1 class="note-name" id="targetNote">C4</h1>
+            <p class="note-freq" id="targetFreq">261.6 Hz</p>
+        </div>
+
+        <!-- 【模块1：高仿 Logic Pro 12音级面板 (无视八度)】 -->
+        <div class="logic-plugin-panel">
+            <div class="logic-keyboard-container">
+                <div class="logic-key logic-white" id="pk-0">C</div>
+                <div class="logic-key logic-white" id="pk-2" style="left: 50px;">D</div>
+                <div class="logic-key logic-white" id="pk-4" style="left: 100px;">E</div>
+                <div class="logic-key logic-white" id="pk-5" style="left: 150px;">F</div>
+                <div class="logic-key logic-white" id="pk-7" style="left: 200px;">G</div>
+                <div class="logic-key logic-white" id="pk-9" style="left: 250px;">A</div>
+                <div class="logic-key logic-white" id="pk-11" style="left: 300px;">B</div>
+                <div class="logic-key logic-black" id="pk-1" style="left: 35px;">C#</div>
+                <div class="logic-key logic-black" id="pk-3" style="left: 85px;">D#</div>
+                <div class="logic-key logic-black" id="pk-6" style="left: 185px;">F#</div>
+                <div class="logic-key logic-black" id="pk-8" style="left: 235px;">G#</div>
+                <div class="logic-key logic-black" id="pk-10" style="left: 285px;">A#</div>
+            </div>
+        </div>
+
+        <!-- 【模块2：长钢琴键盘面板 (精准八度)】 -->
+        <div class="piano-wrapper">
+            <div class="piano-keyboard" id="piano">
+                <!-- JS 动态生成全音域琴键 -->
+            </div>
+        </div>
+
+        <!-- 控制面板 (恢复 88 键全选) -->
+        <div class="control-panel">
+            <select id="noteSelector" class="ui-select"></select>
+            <div class="btn-group">
+                <button id="playBtn" class="ui-btn">🎹 播放参考音</button>
+                <button id="micBtn" class="ui-btn mic-btn">🎤 开启麦克风</button>
+            </div>
+        </div>
+
+        <!-- 刻度尺 -->
+        <div id="debugFreq" class="debug-text">🎤 侦测频率: -- Hz</div>
+        <div class="tuner-container">
+            <div class="tuner-gauge">
+                <div class="indicator" id="pitchIndicator"></div>
+                <div class="center-line"></div>
+            </div>
+            <p class="feedback-text" id="feedbackText">等待输入...</p>
+        </div>
+    </div>
+    <script src="visualizer.js"></script>
+</body>
+</html>
+

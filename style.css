@@ -1,0 +1,542 @@
+/* 全局重置与基础设置 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #121212; /* 深色背景 */
+  color: #ffffff;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.app-container {
+  text-align: center;
+  width: 100%;
+  max-width: 450px;
+  padding: 20px;
+}
+
+/* 目标音显示区 */
+.target-display {
+  margin-bottom: 60px;
+}
+
+.note-name {
+  font-size: 6rem;
+  font-weight: bold;
+  color: #4db8ff; /* 科技感蓝色 */
+  margin: 0;
+  text-shadow: 0 0 20px rgba(77, 184, 255, 0.3);
+}
+
+.note-freq {
+  font-size: 1.5rem;
+  color: #aaaaaa;
+  margin-top: 10px;
+}
+
+/* 刻度尺 UI 区 */
+.tuner-container {
+  background: #1e1e1e;
+  padding: 30px 20px;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.tuner-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  color: #888;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.perfect-text {
+  color: #ffffff;
+}
+
+/* 刻度尺主轴：加入渐变色提示 (红-黄-绿-黄-红) */
+.tuner-gauge {
+  position: relative;
+  height: 20px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 82, 82, 0.8) 0%,
+    rgba(255, 215, 0, 0.8) 25%,
+    rgba(76, 175, 80, 0.8) 45%,
+    rgba(76, 175, 80, 0.8) 55%,
+    rgba(255, 215, 0, 0.8) 75%,
+    rgba(255, 82, 82, 0.8) 100%
+  );
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+/* 绝对居中的零度线 */
+.center-line {
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  background: #ffffff;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+/* 游标：之后用 JS 控制它的 left 属性 (0% 到 100%) */
+.indicator {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  width: 6px;
+  background: #ffffff;
+  left: 50%; /* 默认在正中央 */
+  transform: translateX(-50%);
+  border-radius: 3px;
+  z-index: 2;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+  transition: left 0.1s ease-out, background-color 0.2s;
+}
+
+/* 底部反馈文字 */
+.feedback-text {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #888;
+  height: 1.5em; /* 占位防止跳动 */
+}
+
+/* ===== 新增：控制面板（选音 + 播放） ===== */
+.control-panel {
+  margin-bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  align-items: center;
+}
+
+.ui-select {
+  width: 80%;
+  padding: 10px;
+  background-color: #2a2a2a;
+  color: #fff;
+  border: 1px solid #4db8ff;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.ui-select:focus {
+  border-color: #4db8ff;
+}
+
+.ui-btn {
+  width: 80%;
+  padding: 12px;
+  background-color: #4db8ff;
+  color: #121212;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.ui-btn:hover {
+  background-color: #3aa1e5;
+}
+
+.ui-btn:active {
+  transform: scale(0.98);
+}
+
+.ui-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 按钮组：播放 + 麦克风 */
+.btn-group {
+  display: flex;
+  gap: 10px;
+  width: 80%;
+}
+
+.btn-group .ui-btn {
+  width: 50%;
+  font-size: 0.9rem;
+  padding: 10px;
+}
+
+.mic-btn {
+  background-color: #ff5252;
+  color: #fff;
+}
+
+.mic-btn:hover {
+  background-color: #ff3333;
+}
+
+.debug-text {
+  margin-bottom: 15px;
+  color: #aaaaaa;
+  font-family: monospace; /* 适合显示数字 */
+  font-size: 1.1rem;
+}
+
+/* --- 第五步新增的样式：虚拟钢琴键盘与导航 --- */
+.nav-link {
+  display: block;
+  text-align: left;
+  color: #aaaaaa;
+  text-decoration: none;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+}
+
+.nav-link:hover {
+  color: #fff;
+}
+
+/* 键盘容器（允许横向滚动） */
+.piano-wrapper {
+  width: 100%;
+  overflow-x: auto; /* 如果键盘太长，可以左右滑动 */
+  overflow-y: hidden;
+  margin-bottom: 30px;
+  background: #1e1e1e;
+  padding: 10px 0;
+  border-radius: 10px;
+  scroll-behavior: smooth; /* 平滑滚动 */
+}
+
+/* 键盘绝对定位系统 */
+.piano-keyboard {
+  position: relative;
+  height: 100px;
+  margin: 0 auto;
+}
+
+.piano-key {
+  position: absolute;
+  top: 0;
+  border-radius: 0 0 4px 4px;
+  transition: background-color 0.1s;
+}
+
+/* 白键 */
+.white-key {
+  width: 30px;
+  height: 100px;
+  background: #dddddd;
+  border: 1px solid #111;
+  z-index: 1;
+}
+
+/* 黑键 */
+.black-key {
+  width: 18px;
+  height: 65px;
+  background: #222222;
+  border: 1px solid #000;
+  z-index: 2;
+}
+
+/* 状态高亮 (PM 规定的视觉反馈) */
+/* 目标音 - 蓝色边框高亮 */
+.white-key.target {
+  border: 3px solid #4db8ff;
+  background: #e0f0ff;
+  z-index: 3;
+}
+.black-key.target {
+  border: 2px solid #4db8ff;
+  background: #003366;
+  z-index: 4;
+}
+
+/* 用户正在唱的音 - 绿色高亮 */
+.white-key.active {
+  background: #4caf50;
+  border: 1px solid #2e7d32;
+  z-index: 3;
+}
+.black-key.active {
+  background: #4caf50;
+  z-index: 4;
+}
+
+/* 当同时是目标音且用户唱准了，闪烁金光 */
+.white-key.target.active,
+.black-key.target.active {
+  background: #ffd700;
+  box-shadow: 0 0 15px #ffd700;
+}
+
+/* --- 高仿 Logic Pro 插件风格 UI --- */
+.logic-plugin-panel {
+  background: linear-gradient(180deg, #5b717c 0%, #3e525b 100%);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.2), 0 10px 20px rgba(0, 0, 0, 0.6);
+  margin-bottom: 30px;
+  display: flex;
+  justify-content: center;
+}
+
+.logic-keyboard-container {
+  position: relative;
+  width: 350px; /* 7个白键 * 50px */
+  height: 120px;
+  background: #111;
+  border: 2px solid #222;
+  border-radius: 6px;
+  padding: 2px;
+  box-shadow: inset 0 5px 15px rgba(0, 0, 0, 0.8);
+}
+
+.logic-key {
+  position: absolute;
+  top: 2px;
+  display: flex;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+  color: #888;
+  border-radius: 4px;
+  transition: all 0.1s;
+  cursor: default;
+  border: 1px solid rgba(0, 0, 0, 0.8);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* 默认未点亮的白键 (暗湖蓝色) */
+.logic-white {
+  width: 48px;
+  height: 114px;
+  background: linear-gradient(180deg, #1c353a 0%, #294c53 100%);
+  align-items: flex-end;
+  padding-bottom: 8px;
+  z-index: 1;
+}
+
+/* 默认未点亮的黑键 (更暗的颜色) */
+.logic-black {
+  width: 30px;
+  height: 70px;
+  background: linear-gradient(180deg, #0f1c1f 0%, #17282c 100%);
+  align-items: flex-end;
+  padding-bottom: 8px;
+  z-index: 2;
+}
+
+/* ★★★ 目标音的状态 (带青色边框) ★★★ */
+.logic-key.target {
+  border: 2px solid #00ffff;
+  color: #00ffff;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3), inset 0 0 10px rgba(0, 255, 255, 0.1);
+}
+
+/* ★★★ 用户唱出来的状态 (图片中的高亮发光效果) ★★★ */
+.logic-key.active {
+  background: linear-gradient(180deg, #00f2fe 0%, #4facfe 100%);
+  color: #ffffff;
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 20px #00f2fe, inset 0 0 15px rgba(255, 255, 255, 0.6);
+  border: 1px solid #ffffff;
+}
+
+/* 如果既是目标音又唱准了 */
+.logic-key.target.active {
+  background: linear-gradient(180deg, #00ff87 0%, #60efff 100%);
+  box-shadow: 0 0 25px #00ff87, inset 0 0 15px rgba(255, 255, 255, 0.8);
+}
+
+/* --- 第四步新增的样式：游标与文字状态 --- */
+
+/* 默认状态 / 等待状态 */
+.indicator.default {
+  background: #ffffff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+}
+.text-default {
+  color: #888;
+}
+
+/* 完美 (Perfect) - 绿色 */
+.indicator.perfect {
+  background: #4caf50;
+  box-shadow: 0 0 15px #4caf50;
+  width: 8px;
+}
+.text-perfect {
+  color: #4caf50;
+  text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+}
+
+/* 不错 (Good) - 黄色 */
+.indicator.good {
+  background: #ffd700;
+  box-shadow: 0 0 10px #ffd700;
+}
+.text-good {
+  color: #ffd700;
+}
+
+/* 跑调 (Out of Tune) - 红色 */
+.indicator.bad {
+  background: #ff5252;
+  box-shadow: 0 0 10px #ff5252;
+}
+.text-bad {
+  color: #ff5252;
+}
+
+/* ===== 兼容旧 UI（按钮 / 读数 / 底部提示） ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #4db8ff;
+  box-shadow: 0 0 16px rgba(77, 184, 255, 0.55);
+}
+
+.brand-title {
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.brand-subtitle {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid rgba(77, 184, 255, 0.35);
+  background: rgba(77, 184, 255, 0.16);
+  color: #ffffff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.btn:hover {
+  background: rgba(77, 184, 255, 0.22);
+  border-color: rgba(77, 184, 255, 0.5);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.hint {
+  margin-top: 12px;
+  color: #777;
+  font-size: 0.95rem;
+}
+
+.readout {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readout-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 10px;
+}
+
+.readout-label {
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.readout-value {
+  margin-top: 6px;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.footer {
+  margin-top: 14px;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+/* 我之前的分区背景元素在此风格下不需要 */
+.zone {
+  display: none;
+}
+
+/* --- 确保 88 键的绿色与金色闪烁存在 --- */
+.white-key.active {
+  background: #4caf50;
+  border: 1px solid #2e7d32;
+  z-index: 3;
+}
+.black-key.active {
+  background: #4caf50;
+  z-index: 4;
+}
+.white-key.target.active,
+.black-key.target.active {
+  background: #ffd700;
+  box-shadow: 0 0 15px #ffd700;
+}
+
+/* --- 确保 Logic 12键的青色与金色闪烁存在 --- */
+.logic-key.target.active {
+  background: linear-gradient(180deg, #ffd700 0%, #ffaa00 100%);
+  box-shadow: 0 0 25px #ffd700, inset 0 0 15px rgba(255, 255, 255, 0.8);
+  border: 1px solid #ffffff;
+  color: #fff;
+}
+
