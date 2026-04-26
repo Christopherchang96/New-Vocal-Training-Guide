@@ -540,3 +540,51 @@ body {
   color: #fff;
 }
 
+/* ================================================== */
+/* --- 📱 移动端响应式适配 (Mobile Responsive Design) --- */
+/* ================================================== */
+
+/* 当屏幕宽度小于 450px (绝大部分手机) 时生效 */
+@media (max-width: 450px) {
+  /* 1. 减少屏幕两侧的空白，给键盘腾出更多空间 */
+  .app-container {
+    padding: 10px;
+  }
+
+  /* 2. 缩小大字的字号，防止屏幕太挤 */
+  .note-name {
+    font-size: 4.5rem;
+  }
+
+  /* 3. ★ 核心修复：将 Logic 键盘整体等比例缩小到 85% */
+  .logic-plugin-panel {
+    padding: 15px 10px; /* 减少面板内边距 */
+  }
+  .logic-keyboard-container {
+    transform: scale(0.85);
+    transform-origin: center top;
+    margin-bottom: -18px; /* 补偿缩小后留出的多余高度 */
+  }
+
+  /* 4. 让下方的下拉菜单和按钮稍微紧凑点 */
+  .ui-select {
+    width: 95%;
+  }
+  .btn-group {
+    width: 95%;
+    gap: 5px;
+  }
+  .btn-group .ui-btn {
+    font-size: 0.85rem;
+    padding: 10px 5px;
+  }
+}
+
+/* 当屏幕极其窄 (例如 iPhone SE 等小屏手机，小于 380px) 时继续缩小 */
+@media (max-width: 380px) {
+  .logic-keyboard-container {
+    transform: scale(0.75); /* 缩小到 75% */
+    margin-bottom: -30px;
+  }
+}
+
