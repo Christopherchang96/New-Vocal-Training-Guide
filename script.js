@@ -54,15 +54,19 @@ Tone.loaded().then(() => {
   playBtn.style.opacity = "1";
 });
 
-let audioContext;
-let analyser;
-let microphone;
+let audioContext, analyser, microphone, lowpassFilter;
 let isMicActive = false;
 let animationId;
+// --- 6. 核心：双屏动态更新联动 ---
+let lastActiveMidi = -1;
+let lastActivePc = -1;
 
-// 【关键修复】将 Buffer Size 从 2048 提升到 8192，确保能测准低频 (A0~C3)
-const BUFF_SIZE = 8192;
+// YIN/时域音高检测在 4096 下响应更灵敏，延迟更低
+const BUFF_SIZE = 4096;
 const audioBuffer = new Float32Array(BUFF_SIZE);
+// 平滑器：保存最近若干帧的频率，减少游标抖动
+let pitchHistory = [];
+const SMOOTHING_FRAMES = 5;
 
 // --- 2. 获取 DOM 元素并填充下拉菜单 ---
 function buildNoteSelector() {
@@ -110,9 +114,17 @@ micBtn.addEventListener("click", async () => {
     analyser = audioContext.createAnalyser();
     analyser.fftSize = BUFF_SIZE;
     microphone = audioContext.createMediaStreamSource(stream);
-    microphone.connect(analyser);
+    lowpassFilter = audioContext.createBiquadFilter();
+    lowpassFilter.type = "lowpass";
+    // 人声音高主要在较低频段，先低通可降低高频噪声干扰
+    lowpassFilter.frequency.value = 1200;
+    lowpassFilter.Q.value = 0.5;
+
+    microphone.connect(lowpassFilter);
+    lowpassFilter.connect(analyser);
 
     isMicActive = true;
+    pitchHistory = [];
     micBtn.innerText = "🎙️ 监听中...";
     micBtn.style.backgroundColor = "#4caf50";
     updatePitch();
@@ -121,57 +133,57 @@ micBtn.addEventListener("click", async () => {
   }
 });
 
-// --- 4. 音高检测算法 (Autocorrelation) ---
-function autoCorrelate(buf, sampleRate) {
-  let SIZE = buf.length;
-  let rms = 0;
-  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
-  rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.01) return -1; // 声音太小
+// --- 4. 【全新商业级核心】：YIN 算法 ---
+function yinAlgorithm(buf, sampleRate) {
+  let yinBuffer = new Float32Array(buf.length / 2);
+  let threshold = 0.15; // 灵敏度阈值 (0.1到0.2最适合人声)
 
-  let r1 = 0,
-    r2 = SIZE - 1,
-    thres = 0.2;
-  for (let i = 0; i < SIZE / 2; i++)
-    if (Math.abs(buf[i]) < thres) {
-      r1 = i;
-      break;
-    }
-  for (let i = 1; i < SIZE / 2; i++)
-    if (Math.abs(buf[SIZE - i]) < thres) {
-      r2 = SIZE - i;
-      break;
-    }
-
-  buf = buf.slice(r1, r2);
-  SIZE = buf.length;
-
-  let c = new Array(SIZE).fill(0);
-  for (let i = 0; i < SIZE; i++) {
-    for (let j = 0; j < SIZE - i; j++) {
-      c[i] = c[i] + buf[j] * buf[j + i];
+  // 1. 计算差分函数 (彻底消除泛音干扰)
+  for (let t = 0; t < yinBuffer.length; t++) {
+    yinBuffer[t] = 0;
+    for (let i = 0; i < yinBuffer.length; i++) {
+      let delta = buf[i] - buf[i + t];
+      yinBuffer[t] += delta * delta;
     }
   }
 
-  let d = 0;
-  while (c[d] > c[d + 1]) d++;
-  let maxval = -1,
-    maxpos = -1;
-  for (let i = d; i < SIZE; i++) {
-    if (c[i] > maxval) {
-      maxval = c[i];
-      maxpos = i;
+  // 2. 累积均值归一化差分
+  yinBuffer[0] = 1;
+  yinBuffer[1] = 1;
+  let runningSum = 0;
+  for (let t = 1; t < yinBuffer.length; t++) {
+    runningSum += yinBuffer[t];
+    yinBuffer[t] *= t / runningSum;
+  }
+
+  // 3. 寻找绝对阈值下的最优周期
+  let tau = -1;
+  for (let t = 2; t < yinBuffer.length; t++) {
+    if (yinBuffer[t] < threshold) {
+      while (t + 1 < yinBuffer.length && yinBuffer[t + 1] < yinBuffer[t]) {
+        t++;
+      }
+      tau = t;
+      break;
     }
   }
-  let T0 = maxpos;
-  let x1 = c[T0 - 1],
-    x2 = c[T0],
-    x3 = c[T0 + 1];
-  let a = (x1 + x3 - 2 * x2) / 2;
-  let b = (x3 - x1) / 2;
-  if (a) T0 = T0 - b / (2 * a);
 
-  return sampleRate / T0;
+  // 如果声音太小或全是环境底噪
+  if (tau === -1) {
+    let rms = 0;
+    for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / buf.length);
+    if (rms < 0.01) return -1;
+  }
+  if (tau === -1) return -1;
+
+  // 4. 抛物线插值提升精度 (算出极精准的 Hz 小数点)
+  let s0 = yinBuffer[tau - 1] || yinBuffer[tau];
+  let s1 = yinBuffer[tau];
+  let s2 = yinBuffer[tau + 1] || yinBuffer[tau];
+  let shift = 0.5 * (s0 - s2) / (s0 - 2 * s1 + s2);
+
+  return sampleRate / (tau + shift);
 }
 
 // --- 5. 核心逻辑：游标更新与视觉反馈判定 ---
@@ -212,10 +224,24 @@ function updateGauge(cents) {
   }
 }
 
-// --- 6. 持续执行的检测循环 ---
+// --- 6. 核心：双屏动态更新联动 ---
 function updatePitch() {
   analyser.getFloatTimeDomainData(audioBuffer);
-  let pitch = autoCorrelate(audioBuffer, audioContext.sampleRate);
+  // 【修改点】：调用新的 YIN 算法
+  let rawPitch = yinAlgorithm(audioBuffer, audioContext.sampleRate);
+  let pitch = -1;
+
+  // 【新增防抖逻辑】：中值滤波器
+  if (rawPitch !== -1) {
+    pitchHistory.push(rawPitch);
+    if (pitchHistory.length > SMOOTHING_FRAMES) pitchHistory.shift(); // 保持数组长度
+    // 取最近几帧的中位数，彻底干掉乱跳的毛刺
+    const sortedArray = [...pitchHistory].sort((a, b) => a - b);
+    pitch = sortedArray[Math.floor(sortedArray.length / 2)];
+  } else {
+    // 如果断声，清空历史
+    pitchHistory = [];
+  }
 
   if (pitch !== -1) {
     debugFreq.innerText = `🎤 侦测频率: ${Math.round(pitch)} Hz`;
