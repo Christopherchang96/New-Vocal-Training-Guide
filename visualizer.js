@@ -118,10 +118,12 @@ playBtn.addEventListener("click", async () => {
 });
 
 // --- 5. 麦克风与音频检测 ---
-let audioContext, analyser, microphone;
+let audioContext, analyser, microphone, lowpassFilter;
 let isMicActive = false;
-const BUFF_SIZE = 8192;
+const BUFF_SIZE = 4096;
 const audioBuffer = new Float32Array(BUFF_SIZE);
+let pitchHistory = [];
+const SMOOTHING_FRAMES = 5;
 
 micBtn.addEventListener("click", async () => {
   if (isMicActive) return;
@@ -130,56 +132,76 @@ micBtn.addEventListener("click", async () => {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioContext.createAnalyser();
     analyser.fftSize = BUFF_SIZE;
-    microphone = audioContext.createMediaStreamSource(stream);
-    microphone.connect(analyser);
+        
+        // 低通滤波：过滤人声主频范围外的高频噪声
+        lowpassFilter = audioContext.createBiquadFilter();
+        lowpassFilter.type = "lowpass";
+        lowpassFilter.frequency.value = 1200; 
+        lowpassFilter.Q.value = 0.5;
+
+        microphone = audioContext.createMediaStreamSource(stream);
+        
+        // 麦克风 -> 滤波器 -> 分析器
+        microphone.connect(lowpassFilter);
+        lowpassFilter.connect(analyser);
 
     isMicActive = true;
+        pitchHistory = [];
     micBtn.innerText = "🎙️ 监听中...";
     micBtn.style.backgroundColor = "#4caf50";
     updatePitch();
   } catch (err) {}
 });
 
-function autoCorrelate(buf, sampleRate) {
-  let SIZE = buf.length,
-    rms = 0;
-  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
-  rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.01) return -1;
-  let r1 = 0,
-    r2 = SIZE - 1,
-    thres = 0.2;
-  for (let i = 0; i < SIZE / 2; i++)
-    if (Math.abs(buf[i]) < thres) {
-      r1 = i;
+// --- 【全新商业级核心】：YIN 算法 ---
+function yinAlgorithm(buf, sampleRate) {
+  let yinBuffer = new Float32Array(buf.length / 2);
+  let threshold = 0.15; // 灵敏度阈值 (0.1到0.2最适合人声)
+
+  // 1. 计算差分函数
+  for (let t = 0; t < yinBuffer.length; t++) {
+    yinBuffer[t] = 0;
+    for (let i = 0; i < yinBuffer.length; i++) {
+      let delta = buf[i] - buf[i + t];
+      yinBuffer[t] += delta * delta;
+    }
+  }
+
+  // 2. 累积均值归一化差分
+  yinBuffer[0] = 1;
+  yinBuffer[1] = 1;
+  let runningSum = 0;
+  for (let t = 1; t < yinBuffer.length; t++) {
+    runningSum += yinBuffer[t];
+    yinBuffer[t] *= t / runningSum;
+  }
+
+  // 3. 寻找绝对阈值下的最优周期
+  let tau = -1;
+  for (let t = 2; t < yinBuffer.length; t++) {
+    if (yinBuffer[t] < threshold) {
+      while (t + 1 < yinBuffer.length && yinBuffer[t + 1] < yinBuffer[t]) t++;
+      tau = t;
       break;
     }
-  for (let i = 1; i < SIZE / 2; i++)
-    if (Math.abs(buf[SIZE - i]) < thres) {
-      r2 = SIZE - i;
-      break;
-    }
-  buf = buf.slice(r1, r2);
-  SIZE = buf.length;
-  let c = new Array(SIZE).fill(0);
-  for (let i = 0; i < SIZE; i++) for (let j = 0; j < SIZE - i; j++) c[i] = c[i] + buf[j] * buf[j + i];
-  let d = 0;
-  while (c[d] > c[d + 1]) d++;
-  let maxval = -1,
-    maxpos = -1;
-  for (let i = d; i < SIZE; i++)
-    if (c[i] > maxval) {
-      maxval = c[i];
-      maxpos = i;
-    }
-  let T0 = maxpos,
-    x1 = c[T0 - 1],
-    x2 = c[T0],
-    x3 = c[T0 + 1];
-  let a = (x1 + x3 - 2 * x2) / 2,
-    b = (x3 - x1) / 2;
-  if (a) T0 = T0 - b / (2 * a);
-  return sampleRate / T0;
+  }
+
+  // 声音太小/环境噪声时返回 -1
+  if (tau === -1) {
+    let rms = 0;
+    for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / buf.length);
+    if (rms < 0.01) return -1;
+  }
+  if (tau === -1) return -1;
+
+  // 4. 抛物线插值提升精度
+  let s0 = yinBuffer[tau - 1] || yinBuffer[tau];
+  let s1 = yinBuffer[tau];
+  let s2 = yinBuffer[tau + 1] || yinBuffer[tau];
+  let shift = 0.5 * (s0 - s2) / (s0 - 2 * s1 + s2);
+
+  return sampleRate / (tau + shift);
 }
 
 // --- 6. 核心：双屏动态更新联动 ---
@@ -188,7 +210,18 @@ let lastActivePc = -1;
 
 function updatePitch() {
   analyser.getFloatTimeDomainData(audioBuffer);
-  let pitch = autoCorrelate(audioBuffer, audioContext.sampleRate);
+  
+  // 调用 YIN 算法 + 中值防抖
+  let rawPitch = yinAlgorithm(audioBuffer, audioContext.sampleRate);
+  let pitch = -1;
+  if (rawPitch !== -1) {
+    pitchHistory.push(rawPitch);
+    if (pitchHistory.length > SMOOTHING_FRAMES) pitchHistory.shift();
+    let sortedArray = [...pitchHistory].sort((a, b) => a - b);
+    pitch = sortedArray[Math.floor(sortedArray.length / 2)];
+  } else {
+    pitchHistory = [];
+  }
 
   if (pitch !== -1) {
     debugFreq.innerText = `🎤 麦克风捕获: ${Math.round(pitch)} Hz`;
