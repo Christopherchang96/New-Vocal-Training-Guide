@@ -125,8 +125,8 @@ const audioBuffer = new Float32Array(BUFF_SIZE);
 let pitchHistory = [];
 const SMOOTHING_FRAMES = 5;
 const MIN_RMS = 0.012;
-const MIN_DETECT_FREQ = 60;   // 人声/练声有效下限
-const MAX_DETECT_FREQ = 1200; // 人声有效上限，屏蔽 19kHz 这类假峰值
+const MIN_DETECT_FREQ = 0;    // 用户要求：下限 0Hz
+const MAX_DETECT_FREQ = 1200; // 用户要求：上限 1200Hz
 
 micBtn.addEventListener("click", async () => {
   if (isMicActive) return;
@@ -160,10 +160,11 @@ micBtn.addEventListener("click", async () => {
 function yinAlgorithm(buf, sampleRate) {
   let yinBuffer = new Float32Array(buf.length / 2);
   let threshold = 0.15; // 灵敏度阈值 (0.1到0.2最适合人声)
+  const safeMinFreq = Math.max(1, MIN_DETECT_FREQ);
   const minTau = Math.max(2, Math.floor(sampleRate / MAX_DETECT_FREQ));
   const maxTau = Math.min(
     yinBuffer.length - 1,
-    Math.ceil(sampleRate / MIN_DETECT_FREQ)
+    Math.ceil(sampleRate / safeMinFreq)
   );
 
   // 1. 计算差分函数
@@ -211,7 +212,7 @@ function yinAlgorithm(buf, sampleRate) {
   let shift = Math.abs(denom) > 1e-12 ? (0.5 * (s0 - s2)) / denom : 0;
   let freq = sampleRate / (tau + shift);
 
-  if (freq < MIN_DETECT_FREQ || freq > MAX_DETECT_FREQ || !Number.isFinite(freq)) {
+  if (freq < safeMinFreq || freq > MAX_DETECT_FREQ || !Number.isFinite(freq)) {
     return -1;
   }
   return freq;
@@ -236,6 +237,11 @@ function updatePitch() {
     if (pitchHistory.length > SMOOTHING_FRAMES) pitchHistory.shift();
     let sortedArray = [...pitchHistory].sort((a, b) => a - b);
     pitch = sortedArray[Math.floor(sortedArray.length / 2)];
+    // 最终输出硬限制：无论前面任何环节，都只允许 0~1200Hz
+    if (!Number.isFinite(pitch) || pitch <= 0 || pitch > MAX_DETECT_FREQ) {
+      pitch = -1;
+      pitchHistory = [];
+    }
   } else {
     pitchHistory = [];
   }
