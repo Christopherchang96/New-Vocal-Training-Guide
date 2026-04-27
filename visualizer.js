@@ -246,6 +246,11 @@ function updatePitch() {
     pitchHistory = [];
   }
 
+  // 显示层最终保险：任何异常都不允许超过 1200Hz
+  if (pitch !== -1) {
+    pitch = Math.max(0, Math.min(MAX_DETECT_FREQ, pitch));
+  }
+
   if (pitch !== -1) {
     debugFreq.innerText = `🎤 麦克风捕获: ${Math.round(pitch)} Hz`;
     debugFreq.style.color = "#4db8ff";
