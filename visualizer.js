@@ -124,6 +124,9 @@ const BUFF_SIZE = 4096;
 const audioBuffer = new Float32Array(BUFF_SIZE);
 let pitchHistory = [];
 const SMOOTHING_FRAMES = 5;
+const MIN_RMS = 0.012;
+const MIN_DETECT_FREQ = 60;   // 人声/练声有效下限
+const MAX_DETECT_FREQ = 1200; // 人声有效上限，屏蔽 19kHz 这类假峰值
 
 micBtn.addEventListener("click", async () => {
   if (isMicActive) return;
@@ -157,6 +160,11 @@ micBtn.addEventListener("click", async () => {
 function yinAlgorithm(buf, sampleRate) {
   let yinBuffer = new Float32Array(buf.length / 2);
   let threshold = 0.15; // 灵敏度阈值 (0.1到0.2最适合人声)
+  const minTau = Math.max(2, Math.floor(sampleRate / MAX_DETECT_FREQ));
+  const maxTau = Math.min(
+    yinBuffer.length - 1,
+    Math.ceil(sampleRate / MIN_DETECT_FREQ)
+  );
 
   // 1. 计算差分函数
   for (let t = 0; t < yinBuffer.length; t++) {
@@ -178,9 +186,9 @@ function yinAlgorithm(buf, sampleRate) {
 
   // 3. 寻找绝对阈值下的最优周期
   let tau = -1;
-  for (let t = 2; t < yinBuffer.length; t++) {
+  for (let t = minTau; t <= maxTau; t++) {
     if (yinBuffer[t] < threshold) {
-      while (t + 1 < yinBuffer.length && yinBuffer[t + 1] < yinBuffer[t]) t++;
+      while (t + 1 <= maxTau && yinBuffer[t + 1] < yinBuffer[t]) t++;
       tau = t;
       break;
     }
@@ -199,9 +207,14 @@ function yinAlgorithm(buf, sampleRate) {
   let s0 = yinBuffer[tau - 1] || yinBuffer[tau];
   let s1 = yinBuffer[tau];
   let s2 = yinBuffer[tau + 1] || yinBuffer[tau];
-  let shift = 0.5 * (s0 - s2) / (s0 - 2 * s1 + s2);
+  let denom = s0 - 2 * s1 + s2;
+  let shift = Math.abs(denom) > 1e-12 ? (0.5 * (s0 - s2)) / denom : 0;
+  let freq = sampleRate / (tau + shift);
 
-  return sampleRate / (tau + shift);
+  if (freq < MIN_DETECT_FREQ || freq > MAX_DETECT_FREQ || !Number.isFinite(freq)) {
+    return -1;
+  }
+  return freq;
 }
 
 // --- 6. 核心：双屏动态更新联动 ---
@@ -210,9 +223,13 @@ let lastActivePc = -1;
 
 function updatePitch() {
   analyser.getFloatTimeDomainData(audioBuffer);
+  // 先做能量门限，静音/底噪不进入音高检测，避免跳到高频假值
+  let rms = 0;
+  for (let i = 0; i < audioBuffer.length; i++) rms += audioBuffer[i] * audioBuffer[i];
+  rms = Math.sqrt(rms / audioBuffer.length);
   
   // 调用 YIN 算法 + 中值防抖
-  let rawPitch = yinAlgorithm(audioBuffer, audioContext.sampleRate);
+  let rawPitch = rms >= MIN_RMS ? yinAlgorithm(audioBuffer, audioContext.sampleRate) : -1;
   let pitch = -1;
   if (rawPitch !== -1) {
     pitchHistory.push(rawPitch);
